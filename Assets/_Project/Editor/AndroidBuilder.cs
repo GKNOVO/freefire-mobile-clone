@@ -94,7 +94,10 @@ namespace BR.EditorTools
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
             PlayerSettings.SetApiCompatibilityLevel(BuildTargetGroup.Android, ApiCompatibilityLevel.NET_Standard);
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
-            PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
+            // API fixa (34): o GameCI le AndroidTargetSdkVersion do ProjectSettings.asset
+            // antes do build e instala "platforms;android-<valor>" via sdkmanager.
+            // Com Auto (0) ele tenta um pacote inexistente e o build falha.
+            PlayerSettings.Android.targetSdkVersion = (AndroidSdkVersions)34;
 
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
             PlayerSettings.allowedAutorotateToPortrait = false;
