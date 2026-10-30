@@ -114,8 +114,12 @@ Como funciona (`BR.EditorTools.AndroidBuilder`):
 
 1. `PlayableSceneGenerator.EnsureGenerated()` cria `Boot.unity`/`Arena.unity` se não existirem
    (cada cena contém só um GameObject com o bootstrap; o conteúdo é montado em runtime).
-2. O build usa essas cenas (Boot primeiro, Arena depois).
-3. Se a geração ou compilação falhar, o builder encerra o job com erro; não é gerado um APK de validação. Confira o log do step **Build APK (GameCI)**.
+2. O build usa essas cenas (Boot primeiro, Arena depois), também registradas em
+   `ProjectSettings/EditorBuildSettings.asset`.
+3. A geração de cenas é *best-effort*: se ela falhar mas as cenas já existirem no
+   repositório, o build continua com as cenas versionadas (só um aviso no log).
+4. O job só falha quando o `BuildPipeline` realmente falha, e o motivo aparece no log.
+   Um build “verde” sem `.apk` também é barrado pelo step **Conferir APK gerado**.
 
 Nada de Inspector: todos os managers, prefabs, armas e a HUD são criados por código
 (`Assets/_Project/Scripts/Bootstrap/`).
@@ -128,7 +132,7 @@ Tudo em `Assets/_Project/Editor/AndroidBuilder.cs`:
 |---|---|
 | bundle id | `com.brstudio.battleroyale` |
 | versão / versionCode | `0.1.0` / `1` |
-| minSdk / targetSdk | 24 / automático (maior instalado na imagem) |
+| minSdk / targetSdk | 24 / 34 (fixos no `ProjectSettings.asset` e no builder) |
 | arquitetura | ARM64 (obrigatório para S24/Play Store) |
 | backend | IL2CPP |
 | orientação | paisagem |
@@ -143,7 +147,9 @@ Tudo em `Assets/_Project/Editor/AndroidBuilder.cs`:
 | `toomanyrequests: You have reached your pull rate limit` | limite anônimo do Docker Hub (100 pulls/6h por IP; runners do GitHub compartilham IP). Rode o workflow de novo mais tarde ou configure `docker/login-action` com uma conta Docker Hub gratuita |
 | `Warning: Failed to find package 'platforms;android'` | `AndroidTargetSdkVersion: 0` (Auto) no `ProjectSettings.asset` — o GameCI lê esse valor e roda `sdkmanager "platforms;android-<valor>"` antes do build. Use uma API real (o projeto usa `34`, em `ProjectSettings.asset` e no `AndroidBuilder`) |
 | `ProjectSettings.asset: No such file or directory` | falta `ProjectSettings/ProjectSettings.asset` no repositório — ele precisa ser enviado junto com `ProjectVersion.txt` (o projeto é a raiz do repositório; não use `projectPath`) |
-| `manifest for unityci/editor:... not found` / falha ao baixar a imagem | o workflow usa `unityVersion: auto`, então o GameCI monta a tag a partir de `ProjectSettings/ProjectVersion.txt` + alvo Android. Se a tag não existir, ajuste a versão do projeto para uma 2022.3.x publicada (não use `unityVersion` com número: no `unity-builder@v6` só `auto` é respeitado) |
+| `manifest for unityci/editor:... not found` / falha ao baixar a imagem | o workflow não fixa imagem nem tag: usa `game-ci/unity-builder@v4` com `unityVersion: auto`, que monta `unityci/editor:ubuntu-<versão do projeto>-android-<versão da imagem>`. Se a tag não existir no Docker Hub, ajuste `ProjectSettings/ProjectVersion.txt` para uma 2022.3.x publicada |
+| Build “verde” mas sem APK | o step **Conferir APK gerado** falha o job; veja se `build/Android/BRMobile.apk` aparece no log do builder |
+| `Projeto validado` falhou antes do build | o step de validação reprovou `ProjectSettings.asset` (targetSdk/minSdk/ARM64/keystore), uma cena ou o `EditorBuildSettings.asset` — a mensagem diz qual |
 | Build falha na geração de cenas | rode **BR ▸ Gerar cenas jogáveis** no Editor e veja o log; o workflow não publica APK de validação |
 | App abre, mas o mapa está magenta | shader `Standard` removido no stripping; o gerador já adiciona os shaders em *Always Included* |
 | `No space left on device` | rode de novo (cache corrompido) ou remova caches antigos em Actions ▸ Caches |

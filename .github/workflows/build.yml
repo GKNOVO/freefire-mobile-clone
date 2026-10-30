@@ -21,6 +21,51 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      # Falha em segundos (e com mensagem clara) se o projeto não estiver buildável.
+      # Todos os valores abaixo são lidos do próprio projeto — nada de tag/versão no YAML.
+      - name: Validar projeto
+        run: |
+          set -eu
+          fail() { echo "::error::$1"; exit 1; }
+
+          [ -f ProjectSettings/ProjectVersion.txt ] \
+            || fail "ProjectSettings/ProjectVersion.txt ausente no repositório."
+          [ -f ProjectSettings/ProjectSettings.asset ] \
+            || fail "ProjectSettings/ProjectSettings.asset ausente no repositório."
+
+          unity_version=$(grep -m1 'm_EditorVersion' ProjectSettings/ProjectVersion.txt | cut -d' ' -f2)
+          [ -n "$unity_version" ] || fail "ProjectVersion.txt sem m_EditorVersion."
+          echo "Editor: $unity_version"
+
+          grep -qE '^  AndroidTargetSdkVersion: 34$' ProjectSettings/ProjectSettings.asset \
+            || fail "AndroidTargetSdkVersion deve ser 34 (encontrado: $(grep -m1 'AndroidTargetSdkVersion' ProjectSettings/ProjectSettings.asset | tr -d ' '))."
+          grep -qE '^  AndroidMinSdkVersion: 24$' ProjectSettings/ProjectSettings.asset \
+            || fail "AndroidMinSdkVersion deve ser 24 (encontrado: $(grep -m1 'AndroidMinSdkVersion' ProjectSettings/ProjectSettings.asset | tr -d ' '))."
+          grep -qE '^  AndroidTargetArchitectures: 2$' ProjectSettings/ProjectSettings.asset \
+            || fail "AndroidTargetArchitectures deve ser 2 (ARM64)."
+          grep -qE '^  androidUseCustomKeystore: 0$' ProjectSettings/ProjectSettings.asset \
+            || fail "androidUseCustomKeystore deve ser 0 (assinatura de debug do Unity)."
+
+          duplicadas=$(grep -oE '^  [A-Za-z][A-Za-z0-9_]*' ProjectSettings/ProjectSettings.asset | sort | uniq -d || true)
+          [ -z "$duplicadas" ] || fail "ProjectSettings.asset com chaves duplicadas: $duplicadas"
+
+          for scene in Assets/_Project/Scenes/Boot.unity Assets/_Project/Scenes/Arena.unity; do
+            [ -f "$scene" ] || fail "Cena ausente: $scene"
+          done
+
+          [ -f ProjectSettings/EditorBuildSettings.asset ] \
+            || fail "ProjectSettings/EditorBuildSettings.asset ausente (lista de cenas do build)."
+
+          {
+            echo "### Projeto validado"
+            echo ""
+            echo "- editor: \`$unity_version\`"
+            echo "- targetSdk 34 / minSdk 24 / ARM64 / keystore de debug"
+            echo "- cenas: Boot.unity, Arena.unity"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # Cache do Library: primeiro build ~30-50 min, seguintes ~10-20 min.
       - name: Cache Library
@@ -31,50 +76,71 @@ jobs:
           restore-keys: |
             Library-Android-
 
-      # Decide o modo de licença antes de baixar/instalar o editor (~5-8 GB).
-      # Modo "server": servidor de licenças flutuantes, sem e-mail/senha no runner.
-      # Modo "credentials": conta Unity (única opção do GameCI para Personal).
+      # Decide o modo de licença antes de baixar a imagem do editor (~6-8 GB).
+      # "server": servidor de licenças flutuantes (Plus/Pro), sem senha no runner.
+      # "credentials": conta Unity (única opção do GameCI para Personal).
       - name: Verificar licença da Unity
         env:
           UNITY_LICENSING_SERVER: ${{ secrets.UNITY_LICENSING_SERVER }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         run: |
+          set -eu
           if [ -n "$UNITY_LICENSING_SERVER" ]; then
-            echo "Licença: servidor de licenças flutuantes (sem credenciais no runner)." >> "$GITHUB_STEP_SUMMARY"
+            echo "Licença: servidor de licenças flutuantes."
+            echo "- licença: servidor flutuante" >> "$GITHUB_STEP_SUMMARY"
           elif [ -n "$UNITY_EMAIL" ] && [ -n "$UNITY_PASSWORD" ]; then
-            echo "Licença: conta Unity (Unity Personal não tem ativação sem credenciais no GameCI)." >> "$GITHUB_STEP_SUMMARY"
+            echo "Licença: conta Unity (UNITY_EMAIL + UNITY_PASSWORD)."
+            echo "- licença: conta Unity" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "::error::Nenhum modo de licença configurado. Defina o secret UNITY_LICENSING_SERVER (Plus/Pro) ou UNITY_EMAIL + UNITY_PASSWORD (Personal)."
+            echo "::error::Nenhum modo de licença configurado. Defina UNITY_EMAIL + UNITY_PASSWORD (Personal) ou UNITY_LICENSING_SERVER (Plus/Pro)."
             exit 1
           fi
 
+      # Imagem e versão são resolvidas pelo próprio GameCI a partir de
+      # ProjectSettings/ProjectVersion.txt — sem customImage, sem tag manual.
       - name: Build APK (GameCI)
-        uses: game-ci/unity-builder@v6
+        id: build
+        uses: game-ci/unity-builder@v4
         env:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
         with:
-          # Sem customImage: o GameCI escolhe a imagem recomendada para a versão
-          # do projeto (lida de ProjectSettings/ProjectVersion.txt) e o alvo Android.
           unityVersion: auto
-          cliVersion: v0.1.63
-          unityLicensingServer: ${{ secrets.UNITY_LICENSING_SERVER }}
           targetPlatform: Android
           androidExportType: androidPackage
+          androidTargetSdkVersion: 34
+          buildName: BRMobile
           buildMethod: BR.EditorTools.AndroidBuilder.BuildAndroid
-          allowDirtyBuild: true
           versioning: None
+          unityLicensingServer: ${{ secrets.UNITY_LICENSING_SERVER }}
+
+      # Um build "verde" sem APK seria uma falha silenciosa: barra aqui.
+      - name: Conferir APK gerado
+        if: success()
+        run: |
+          set -eu
+          apk=$(find build -name '*.apk' -type f 2>/dev/null | head -n 1 || true)
+          if [ -z "$apk" ]; then
+            echo "::error::O step de build terminou sem erro, mas nenhum .apk foi gerado em build/."
+            exit 1
+          fi
+          echo "APK: $apk ($(du -h "$apk" | cut -f1))"
+          echo "- APK: \`$apk\` ($(du -h "$apk" | cut -f1))" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Resumo do build
         if: always()
         run: |
           echo "### Artefatos Android" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          if find build -name '*.apk' -type f | grep -q .; then
-            find build -name '*.apk' -type f -printf '- `%p` — %k KB\n' | tee -a "$GITHUB_STEP_SUMMARY"
-          else
+          mapfile -t apks < <(find build -name '*.apk' -type f 2>/dev/null || true)
+          if [ "${#apks[@]}" -eq 0 ]; then
             echo "Nenhum APK encontrado. Veja o log do step **Build APK (GameCI)**." >> "$GITHUB_STEP_SUMMARY"
+          else
+            for apk in "${apks[@]}"; do
+              echo "- \`$apk\` — $(du -h "$apk" | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
+            done
           fi
 
       - name: Upload APK
