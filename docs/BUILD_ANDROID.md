@@ -3,11 +3,12 @@
 Fluxo completo: **publicar o projeto no GitHub → rodar o workflow → baixar o APK → instalar no Galaxy S24**.
 Tudo pode ser feito pelo navegador do celular, com **uma única exceção**: a licença da Unity.
 
-> ⚠️ **Requisito da Unity (não do workflow):** builds em CI precisam de uma licença.
-> Para Unity **Personal**, é um arquivo `Unity_lic.ulf` gerado **uma vez** pelo Unity Hub
-> (Windows/macOS/Linux). A Unity descontinuou a ativação manual por upload de `.alf`,
-> então não existe caminho 100% pelo celular para gerar esse arquivo. Depois de gerado,
-> ele é um secret do repositório e **todos os builds seguintes são 100% pelo celular**.
+> ⚠️ **Requisito da Unity (não do workflow):** todo build em CI precisa de licença.
+> No GameCI, **Unity Personal só ativa com e-mail e senha da conta** (`UNITY_EMAIL` +
+> `UNITY_PASSWORD`); não existe modo sem credenciais para Personal. O arquivo `.ulf`
+> não substitui a senha: a Unity revalida a licença a cada build.
+> As rotas **sem credenciais** exigem Plus/Pro (servidor de licenças) ou o build na nuvem
+> da Unity (**Unity Build Automation**), que não roda no GitHub Actions.
 
 ---
 
@@ -43,31 +44,37 @@ git add -A && git commit -m "Projeto Unity" && git push
 
 ---
 
-## 2. Licença da Unity (uma vez)
+## 2. Licença da Unity
 
-1. Em **um computador** (seu, de um amigo, ou um Windows virtual no navegador),
-   instale o **Unity Hub** e entre com a conta Unity.
-2. **Unity Hub ▸ Preferences ▸ Licenses ▸ Add ▸ Get a free personal license**.
-   Confirme que `Unity_lic.ulf` foi criado:
-   - Windows: `C:\ProgramData\Unity\Unity_lic.ulf`
-   - macOS: `/Library/Application Support/Unity/Unity_lic.ulf`
-   - Linux: `~/.local/share/unity3d/Unity/Unity_lic.ulf`
-3. No GitHub: **Settings ▸ Secrets and variables ▸ Actions ▸ New repository secret**
+O workflow tem duas rotas e escolhe sozinho antes de baixar o editor:
 
-| Secret | Valor |
-|---|---|
-| `UNITY_LICENSE` | conteúdo completo do `Unity_lic.ulf` (abra no bloco de notas e cole) |
-| `UNITY_EMAIL` | e-mail da conta Unity |
-| `UNITY_PASSWORD` | senha da conta Unity (sem caracteres especiais, se possível) |
+| Modo | Secrets | Quando usar |
+|---|---|---|
+| `credentials` | `UNITY_EMAIL` + `UNITY_PASSWORD` | Unity **Personal** (grátis) — única opção |
+| `server` | `UNITY_LICENSING_SERVER` | Unity **Plus/Pro** com servidor de licenças flutuantes |
 
-> Se você usa Unity Plus/Pro: use `UNITY_SERIAL` + `UNITY_EMAIL` + `UNITY_PASSWORD`
-> e remova o `UNITY_LICENSE` do workflow.
+Em **Settings ▸ Secrets and variables ▸ Actions ▸ New repository secret**, crie os
+secrets do modo escolhido. Se nenhum estiver completo, o job falha no primeiro step
+com a mensagem "Nenhum modo de licença configurado" — sem gastar 40 minutos.
+
+### Conta com 2FA
+
+A ativação do GameCI faz login com e-mail e senha, então **2FA bloqueia o build**.
+Opções, da mais simples para a mais cara:
+
+1. desativar a verificação em duas etapas na conta Unity usada no CI (ou usar uma conta
+   dedicada ao build, sem 2FA);
+2. **Unity Build Automation** (build na nuvem da Unity, licença do lado deles, sem
+   `UNITY_EMAIL`/`UNITY_PASSWORD` no repositório) — configurado no Unity Dashboard,
+   não no GitHub Actions;
+3. servidor de licenças flutuantes da Unity (requer Plus/Pro) e o secret
+   `UNITY_LICENSING_SERVER`, por exemplo `https://licenses.suaempresa.com:8080`.
+
+> O arquivo `Unity_lic.ulf` do Unity Hub **não** resolve sozinho: o GameCI continua
+> precisando de e-mail e senha para revalidar a licença Personal em cada runner.
 >
-> Licenças Personal expiram/revalidam de tempos em tempos; se o build falhar na ativação,
-> repita este passo 2 e atualize o secret.
-
-Alternativa sem licença local: **Unity Build Automation** (build na nuvem da Unity,
-licenciamento do lado deles, plano por minutos). O restante do repositório funciona igual.
+> A ativação manual em `license.unity3d.com` (`.alf` → `.ulf`) foi descontinuada
+> para licenças Personal.
 
 ---
 
@@ -131,7 +138,8 @@ Tudo em `Assets/_Project/Editor/AndroidBuilder.cs`:
 
 | Sintoma | Causa / solução |
 |---|---|
-| `Unable to activate Unity license` | secrets ausentes/expirados — refaça o passo 2 |
+| `Unable to activate Unity license` | credenciais erradas, 2FA na conta ou secrets ausentes — veja o passo 2 |
+| `Nenhum modo de licença configurado` | crie `UNITY_EMAIL` + `UNITY_PASSWORD` ou `UNITY_LICENSING_SERVER` |
 | `Unity version 2022.3.62f1 not found` | troque `ProjectSettings/ProjectVersion.txt` por outra 2022.3.x (ex.: `2022.3.22f1`) |
 | Build falha na geração de cenas | rode **BR ▸ Gerar cenas jogáveis** no Editor e veja o log; o workflow não publica APK de validação |
 | App abre, mas o mapa está magenta | shader `Standard` removido no stripping; o gerador já adiciona os shaders em *Always Included* |

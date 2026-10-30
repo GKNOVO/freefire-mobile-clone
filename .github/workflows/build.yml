@@ -31,6 +31,24 @@ jobs:
           restore-keys: |
             Library-Android-
 
+      # Decide o modo de licença antes de baixar/instalar o editor (~5-8 GB).
+      # Modo "server": servidor de licenças flutuantes, sem e-mail/senha no runner.
+      # Modo "credentials": conta Unity (única opção do GameCI para Personal).
+      - name: Verificar licença da Unity
+        env:
+          UNITY_LICENSING_SERVER: ${{ secrets.UNITY_LICENSING_SERVER }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        run: |
+          if [ -n "$UNITY_LICENSING_SERVER" ]; then
+            echo "Licença: servidor de licenças flutuantes (sem credenciais no runner)." >> "$GITHUB_STEP_SUMMARY"
+          elif [ -n "$UNITY_EMAIL" ] && [ -n "$UNITY_PASSWORD" ]; then
+            echo "Licença: conta Unity (Unity Personal não tem ativação sem credenciais no GameCI)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::Nenhum modo de licença configurado. Defina o secret UNITY_LICENSING_SERVER (Plus/Pro) ou UNITY_EMAIL + UNITY_PASSWORD (Personal)."
+            exit 1
+          fi
+
       - name: Build APK (GameCI)
         uses: game-ci/unity-builder@v6
         env:
@@ -38,6 +56,7 @@ jobs:
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           cliVersion: v0.1.63
+          unityLicensingServer: ${{ secrets.UNITY_LICENSING_SERVER }}
           targetPlatform: Android
           androidExportType: androidPackage
           buildMethod: BR.EditorTools.AndroidBuilder.BuildAndroid
