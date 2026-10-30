@@ -140,9 +140,10 @@ Tudo em `Assets/_Project/Editor/AndroidBuilder.cs`:
 |---|---|
 | `Unable to activate Unity license` | credenciais erradas, 2FA na conta ou secrets ausentes — veja o passo 2 |
 | `Nenhum modo de licença configurado` | crie `UNITY_EMAIL` + `UNITY_PASSWORD` ou `UNITY_LICENSING_SERVER` |
+| `toomanyrequests: You have reached your pull rate limit` | limite anônimo do Docker Hub (100 pulls/6h por IP; runners do GitHub compartilham IP). Rode o workflow de novo mais tarde ou configure `docker/login-action` com uma conta Docker Hub gratuita |
 | `Warning: Failed to find package 'platforms;android'` | `AndroidTargetSdkVersion: 0` (Auto) no `ProjectSettings.asset` — o GameCI lê esse valor e roda `sdkmanager "platforms;android-<valor>"` antes do build. Use uma API real (o projeto usa `34`, em `ProjectSettings.asset` e no `AndroidBuilder`) |
 | `ProjectSettings.asset: No such file or directory` | falta `ProjectSettings/ProjectSettings.asset` no repositório — ele precisa ser enviado junto com `ProjectVersion.txt` (o projeto é a raiz do repositório; não use `projectPath`) |
-| `Unity version 2022.3.62f1 not found` | troque `ProjectSettings/ProjectVersion.txt` por outra 2022.3.x (ex.: `2022.3.22f1`) |
+| `manifest for unityci/editor:... not found` / falha ao baixar a imagem | a imagem precisa ser a mesma versão do projeto. O workflow fixa `customImage: unityci/editor:ubuntu-2022.3.28f1-android-3`; se trocar `ProjectSettings/ProjectVersion.txt`, troque o `customImage` junto (o input `unityVersion` não serve para isso: no `unity-builder@v6` só `auto` é respeitado) |
 | Build falha na geração de cenas | rode **BR ▸ Gerar cenas jogáveis** no Editor e veja o log; o workflow não publica APK de validação |
 | App abre, mas o mapa está magenta | shader `Standard` removido no stripping; o gerador já adiciona os shaders em *Always Included* |
 | `No space left on device` | rode de novo (cache corrompido) ou remova caches antigos em Actions ▸ Caches |

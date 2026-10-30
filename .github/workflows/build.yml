@@ -55,6 +55,10 @@ jobs:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
+          # Tag fixa e conhecida no Docker Hub (linux/amd64, com módulo Android).
+          # Sem customImage o GameCI monta o nome da imagem sozinho e um tag
+          # ausente derruba o job antes de qualquer build.
+          customImage: unityci/editor:ubuntu-2022.3.28f1-android-3
           cliVersion: v0.1.63
           unityLicensingServer: ${{ secrets.UNITY_LICENSING_SERVER }}
           targetPlatform: Android
