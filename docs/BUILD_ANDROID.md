@@ -140,6 +140,7 @@ Tudo em `Assets/_Project/Editor/AndroidBuilder.cs`:
 |---|---|
 | `Unable to activate Unity license` | credenciais erradas, 2FA na conta ou secrets ausentes — veja o passo 2 |
 | `Nenhum modo de licença configurado` | crie `UNITY_EMAIL` + `UNITY_PASSWORD` ou `UNITY_LICENSING_SERVER` |
+| `ProjectSettings.asset: No such file or directory` | falta `ProjectSettings/ProjectSettings.asset` no repositório — ele precisa ser enviado junto com `ProjectVersion.txt` (o projeto é a raiz do repositório; não use `projectPath`) |
 | `Unity version 2022.3.62f1 not found` | troque `ProjectSettings/ProjectVersion.txt` por outra 2022.3.x (ex.: `2022.3.22f1`) |
 | Build falha na geração de cenas | rode **BR ▸ Gerar cenas jogáveis** no Editor e veja o log; o workflow não publica APK de validação |
 | App abre, mas o mapa está magenta | shader `Standard` removido no stripping; o gerador já adiciona os shaders em *Always Included* |
