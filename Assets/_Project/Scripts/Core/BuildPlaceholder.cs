@@ -6,9 +6,9 @@ namespace BR.Core
     /// Tela de validação usada SOMENTE quando o build roda sem nenhuma cena real.
     ///
     /// Objetivo: permitir validar o pipeline (licença, GameCI, IL2CPP, APK, instalação
-    /// no aparelho) antes de existirem as cenas Boot/Arena. O build script
-    /// (BR.EditorTools.AndroidBuilder) cria uma cena temporária com este componente
-    /// se não encontrar nenhuma cena em Assets/_Project/Scenes.
+    /// no aparelho) antes de existirem as cenas Boot/Arena. Se o build rodar sem
+    /// nenhuma cena habilitada em ProjectSettings/EditorBuildSettings.asset, esta tela
+    /// temporária aparece.
     ///
     /// Assim que Boot.unity/Arena.unity existirem, esta tela deixa de ser usada.
     /// Usa IMGUI de propósito: não depende de Canvas, TMP, fontes ou prefabs.

@@ -45,8 +45,10 @@ Ver seção 3 do `docs/ARCHITECTURE.md`.
 
 ## Compilar APK sem PC (GitHub Actions)
 
-O repositório inclui `.github/workflows/main.yml` (GameCI + Unity 2022.3 + Android/IL2CPP/ARM64)
-e `Assets/_Project/Editor/AndroidBuilder.cs` (configura Player Settings e gera `build/Android/BRMobile.apk`).
+O repositório inclui `.github/workflows/build.yml` (GameCI + Unity 2022.3 + Android/IL2CPP/ARM64)
+usando o script de build **padrão** do GameCI — as Player Settings ficam em
+`ProjectSettings/ProjectSettings.asset` e as cenas em `ProjectSettings/EditorBuildSettings.asset`.
+O APK sai em `build/Android/BRMobile.apk`.
 
 Passo a passo pelo celular, secrets de licença e instalação no Galaxy S24:
 **[docs/BUILD_ANDROID.md](docs/BUILD_ANDROID.md)**.
