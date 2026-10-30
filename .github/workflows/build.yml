@@ -4,11 +4,6 @@ on:
   workflow_dispatch:
   push:
     branches: [main, master]
-    paths:
-      - "Assets/**"
-      - "Packages/**"
-      - "ProjectSettings/**"
-      - ".github/workflows/main.yml"
 
 permissions:
   contents: read
