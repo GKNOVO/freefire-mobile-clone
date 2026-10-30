@@ -32,12 +32,12 @@ jobs:
             Library-Android-
 
       - name: Build APK (GameCI)
-        uses: game-ci/unity-builder@v4
+        uses: game-ci/unity-builder@v6
         env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
+          cliVersion: v0.1.63
           targetPlatform: Android
           androidExportType: androidPackage
           buildMethod: BR.EditorTools.AndroidBuilder.BuildAndroid
