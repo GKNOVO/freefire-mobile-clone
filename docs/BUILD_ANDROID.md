@@ -46,7 +46,8 @@ git add -A && git commit -m "Projeto Unity" && git push
 
 ## 2. Licença da Unity
 
-O workflow escolhe a rota sozinho antes de baixar o editor (~6–8 GB):
+O workflow **não faz verificação prévia**: ele apenas repassa as secrets para o
+`game-ci/unity-builder`, que ativa a licença sozinho. Rotas aceitas pela action:
 
 | Modo | Secrets necessários | Quando usar |
 |---|---|---|
@@ -55,9 +56,9 @@ O workflow escolhe a rota sozinho antes de baixar o editor (~6–8 GB):
 | Servidor | `UNITY_LICENSING_SERVER` (URL) | servidor de licenças flutuantes (Plus/Pro) |
 
 Em **Settings ▸ Secrets and variables ▸ Actions ▸ New repository secret**, crie os
-secrets da rota escolhida. Se nenhuma estiver completa, o job falha no primeiro step
-com a mensagem "Nenhuma licença utilizável" e a instrução exata — sem gastar 40 minutos
-nem baixar a imagem.
+secrets da rota escolhida. Sem eles o job chega ao step **Build APK (GameCI)** e
+falha ali com `Missing Unity License File and no Serial was found` — depois de baixar
+a imagem do editor (~6–8 GB), então vale conferir os secrets antes de disparar.
 
 ### Gerar o `Unity_lic.ulf` (Personal, uma vez só)
 
@@ -170,7 +171,7 @@ Tudo em `ProjectSettings/ProjectSettings.asset` (nada de `buildMethod` customiza
 |---|---|
 | `Missing Unity License File and no Serial was found` | falta o secret `UNITY_LICENSE` (Personal) ou `UNITY_SERIAL` (Plus/Pro). E-mail e senha sozinhos não ativam — veja o passo 2 |
 | `Unable to activate Unity license` | `.ulf` de outra conta, senha com símbolos especiais ou 2FA na rota `UNITY_SERIAL` — veja o passo 2 |
-| `Nenhuma licença utilizável` | nenhum conjunto completo: Personal (`UNITY_LICENSE` + e-mail + senha), Plus/Pro (`UNITY_SERIAL` + e-mail + senha) ou `UNITY_LICENSING_SERVER` |
+| `Unable to activate Unity license` / job morre logo após baixar a imagem | nenhum conjunto completo: Personal (`UNITY_LICENSE` + e-mail + senha), Plus/Pro (`UNITY_SERIAL` + e-mail + senha) ou `UNITY_LICENSING_SERVER` — veja o passo 2 |
 | `toomanyrequests: You have reached your pull rate limit` | limite anônimo do Docker Hub (100 pulls/6h por IP; runners do GitHub compartilham IP). Rode o workflow de novo mais tarde ou configure `docker/login-action` com uma conta Docker Hub gratuita |
 | `Warning: Failed to find package 'platforms;android'` | `AndroidTargetSdkVersion: 0` (Auto) no `ProjectSettings.asset` — o GameCI lê esse valor e roda `sdkmanager "platforms;android-<valor>"` antes do build. O projeto fixa `34` |
 | `ProjectSettings.asset: No such file or directory` | falta `ProjectSettings/ProjectSettings.asset` no repositório — ele precisa ser enviado junto com `ProjectVersion.txt` (o projeto é a raiz do repositório; não use `projectPath`) |

@@ -76,59 +76,13 @@ jobs:
           restore-keys: |
             Library-Android-
 
-      # Decide o modo de licença ANTES de baixar a imagem do editor (~6-8 GB).
-      # O GameCI recusa o build sem uma destas três coisas — e-mail/senha sozinhos
-      # NÃO ativam a Unity (erro "Missing Unity License File and no Serial was found"):
-      #   Personal  -> UNITY_LICENSE (conteúdo do Unity_lic.ulf) + e-mail + senha
-      #   Plus/Pro  -> UNITY_SERIAL (XX-XXXX-XXXX-XXXX-XXXX-XXXX) + e-mail + senha
-      #   Servidor  -> UNITY_LICENSING_SERVER (licença flutuante, sem senha no runner)
-      - name: Verificar licença da Unity
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
-          UNITY_LICENSING_SERVER: ${{ secrets.UNITY_LICENSING_SERVER }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-        run: |
-          set -eu
-          fail() { echo "::error::$1"; exit 1; }
-
-          creds=0
-          if [ -n "${UNITY_EMAIL:-}" ] && [ -n "${UNITY_PASSWORD:-}" ]; then creds=1; fi
-
-          if [ -n "${UNITY_LICENSING_SERVER:-}" ]; then
-            modo="servidor de licenças flutuantes"
-          elif [ -n "${UNITY_LICENSE:-}" ] && [ "$creds" = 1 ]; then
-            echo "$UNITY_LICENSE" | grep -q '<License' \
-              || fail "UNITY_LICENSE não parece um .ulf válido (esperado XML com <License id=...>). Copie o arquivo Unity_lic.ulf inteiro."
-            modo="Unity Personal (arquivo .ulf)"
-          elif [ -n "${UNITY_SERIAL:-}" ] && [ "$creds" = 1 ]; then
-            modo="Unity Plus/Pro (serial)"
-          else
-            cat <<'MSG'
-          ::error::Nenhuma licença utilizável. O GameCI aborta com "Missing Unity License File and no Serial was found" porque e-mail e senha sozinhos não ativam a Unity.
-
-          Crie UM destes conjuntos em Settings > Secrets and variables > Actions:
-            Personal : UNITY_LICENSE (conteúdo do Unity_lic.ulf) + UNITY_EMAIL + UNITY_PASSWORD
-            Plus/Pro : UNITY_SERIAL (XX-XXXX-XXXX-XXXX-XXXX-XXXX) + UNITY_EMAIL + UNITY_PASSWORD
-            Servidor : UNITY_LICENSING_SERVER (URL do servidor de licenças)
-
-          Como gerar o .ulf (uma vez só): Unity Hub > Preferences > Licenses > Add >
-          "Get a free personal license". O arquivo fica em:
-            Windows  C:\ProgramData\Unity\Unity_lic.ulf
-            macOS    /Library/Application Support/Unity/Unity_lic.ulf
-            Linux    ~/.local/share/unity3d/Unity/Unity_lic.ulf
-          MSG
-            exit 1
-          fi
-
-          echo "Licença: $modo"
-          echo "- licença: $modo" >> "$GITHUB_STEP_SUMMARY"
-
       # Build com o script PADRÃO do GameCI (sem buildMethod customizado): ele usa
       # as cenas de ProjectSettings/EditorBuildSettings.asset e as Player Settings de
       # ProjectSettings.asset (minSdk 24, targetSdk 34, ARM64, IL2CPP) e grava em
       # build/Android/BRMobile.apk. Imagem/versão vêm de ProjectVersion.txt.
+      # A licença é tratada inteiramente pela própria action a partir das secrets
+      # (UNITY_EMAIL + UNITY_PASSWORD, e opcionalmente UNITY_LICENSE/UNITY_SERIAL/
+      # servidor de licenças) — nenhuma verificação prévia no workflow.
       - name: Build APK (GameCI)
         id: build
         uses: game-ci/unity-builder@v4
