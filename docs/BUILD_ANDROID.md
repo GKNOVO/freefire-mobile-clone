@@ -108,8 +108,7 @@ Como funciona (`BR.EditorTools.AndroidBuilder`):
 1. `PlayableSceneGenerator.EnsureGenerated()` cria `Boot.unity`/`Arena.unity` se não existirem
    (cada cena contém só um GameObject com o bootstrap; o conteúdo é montado em runtime).
 2. O build usa essas cenas (Boot primeiro, Arena depois).
-3. Se a geração falhar por algum motivo, o builder cai no plano B: uma cena com a tela
-   “BUILD DE VALIDAÇÃO”, para você validar licença/assinatura/instalação sem APK quebrado.
+3. Se a geração ou compilação falhar, o builder encerra o job com erro; não é gerado um APK de validação. Confira o log do step **Build APK (GameCI)**.
 
 Nada de Inspector: todos os managers, prefabs, armas e a HUD são criados por código
 (`Assets/_Project/Scripts/Bootstrap/`).
@@ -134,7 +133,7 @@ Tudo em `Assets/_Project/Editor/AndroidBuilder.cs`:
 |---|---|
 | `Unable to activate Unity license` | secrets ausentes/expirados — refaça o passo 2 |
 | `Unity version 2022.3.62f1 not found` | troque `ProjectSettings/ProjectVersion.txt` por outra 2022.3.x (ex.: `2022.3.22f1`) |
-| App abre na tela “BUILD DE VALIDAÇÃO” | a geração das cenas falhou: rode o menu **BR ▸ Gerar cenas jogáveis** no Editor e veja o log |
+| Build falha na geração de cenas | rode **BR ▸ Gerar cenas jogáveis** no Editor e veja o log; o workflow não publica APK de validação |
 | App abre, mas o mapa está magenta | shader `Standard` removido no stripping; o gerador já adiciona os shaders em *Always Included* |
 | `No space left on device` | rode de novo (cache corrompido) ou remova caches antigos em Actions ▸ Caches |
 | APK não instala | desinstale versão anterior com assinatura diferente; verifique ARM64 |

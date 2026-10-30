@@ -1,236 +1,133 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
-using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
+using BR.Bootstrap;
 
 namespace BR.EditorTools
 {
     /// <summary>
-    /// Ponto de entrada de build Android (usado pelo GitHub Actions/GameCI).
-    ///
-    /// - Configura Player Settings (bundle id, IL2CPP, ARM64, minSdk, paisagem).
-    /// - Usa as cenas de Assets/_Project/Scenes (Boot primeiro, depois Arena).
-    /// - Se NÃO existir nenhuma cena, gera uma cena temporária com BuildPlaceholder
-    ///   para que o pipeline completo (licença → build → APK → instalação) possa ser
-    ///   validado antes do jogo estar montado.
-    /// - Saída: build/Android/BRMobile.apk (pasta padrão que o GameCI publica como artifact).
-    ///
-    /// Também disponível no menu do Editor: BR > Build Android APK (CI).
+    /// Gera as cenas de entrada do prototipo. O conteudo jogavel e montado em runtime
+    /// pelos componentes GameBootstrap e ArenaBootstrap.
     /// </summary>
-    public static class AndroidBuilder
+    public static class PlayableSceneGenerator
     {
-        private const string BuildFolder = "build/Android";
-        private const string ApkName = "BRMobile.apk";
         private const string ScenesFolder = "Assets/_Project/Scenes";
-        private const string PlaceholderScenePath = ScenesFolder + "/_BuildPlaceholder.unity";
+        private const string BootScenePath = ScenesFolder + "/Boot.unity";
+        private const string ArenaScenePath = ScenesFolder + "/Arena.unity";
+        private const string GameBootstrapScriptPath = "Assets/_Project/Scripts/Bootstrap/GameBootstrap.cs";
+        private const string ArenaBootstrapScriptPath = "Assets/_Project/Scripts/Bootstrap/ArenaBootstrap.cs";
 
-        private const string BundleId = "com.brstudio.battleroyale";
-        private const string ProductName = "Battle Royale Mobile";
-        private const string CompanyName = "BR Studio";
-        private const string Version = "0.1.0";
-
-        [MenuItem("BR/Build Android APK (CI)")]
-        public static void BuildAndroid()
+        [MenuItem("BR/Gerar cenas jogaveis")]
+        public static void EnsureGenerated()
         {
-            try
-            {
-                EnsureAndroidTarget();
-                ConfigurePlayerSettings();
-
-                // Gera Boot.unity/Arena.unity se ainda não existirem (primeiro build em CI).
-                PlayableSceneGenerator.EnsureGenerated();
-
-                var scenes = CollectScenes();
-                var outputPath = ResolveOutputPath();
-
-                Debug.Log($"[AndroidBuilder] Cenas: {string.Join(", ", scenes)}");
-                Debug.Log($"[AndroidBuilder] Saída: {outputPath}");
-
-                var options = new BuildPlayerOptions
-                {
-                    scenes = scenes,
-                    locationPathName = outputPath,
-                    target = BuildTarget.Android,
-                    targetGroup = BuildTargetGroup.Android,
-                    options = BuildOptions.None
-                };
-
-                var report = BuildPipeline.BuildPlayer(options);
-                var summary = report.summary;
-
-                Debug.Log($"[AndroidBuilder] Resultado: {summary.result} | " +
-                          $"erros: {summary.totalErrors} | avisos: {summary.totalWarnings} | " +
-                          $"tamanho: {summary.totalSize / (1024f * 1024f):F1} MB | " +
-                          $"tempo: {summary.totalTime.TotalMinutes:F1} min");
-
-                if (summary.result != BuildResult.Succeeded)
-                {
-                    throw new Exception(
-                        $"Build Android falhou: {summary.result} ({summary.totalErrors} erro(s)). " +
-                        "Veja os erros acima no log do Unity.");
-                }
-
-                Debug.Log($"[AndroidBuilder] APK pronto: {outputPath}");
-            }
-            catch (Exception e)
-            {
-                // Relançar garante exit code != 0 para o GitHub Actions falhar o job.
-                Debug.LogError("[AndroidBuilder] " + e);
-                throw;
-            }
-        }
-
-        // ------------------------------------------------------------ Configuração
-
-        private static void EnsureAndroidTarget()
-        {
-            if (EditorUserBuildSettings.activeBuildTarget == BuildTarget.Android) return;
-
-            Debug.Log("[AndroidBuilder] Alternando build target para Android...");
-            if (!EditorUserBuildSettings.SwitchActiveBuildTarget(BuildTargetGroup.Android, BuildTarget.Android))
-                Debug.LogWarning("[AndroidBuilder] Não foi possível alternar o target; tentando build mesmo assim.");
-        }
-
-        private static void ConfigurePlayerSettings()
-        {
-            PlayerSettings.companyName = CompanyName;
-            PlayerSettings.productName = ProductName;
-            PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, BundleId);
-            PlayerSettings.bundleVersion = Version;
-            PlayerSettings.Android.bundleVersionCode = 1;
-
-            // Galaxy S24 / Android moderno: arm64 + IL2CPP é obrigatório para performance e para a Play Store.
-            PlayerSettings.SetScriptingBackend(BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
-            PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
-            PlayerSettings.SetApiCompatibilityLevel(BuildTargetGroup.Android, ApiCompatibilityLevel.NET_Standard_2_0);
-
-            PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
-            PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-
-            // Jogo em paisagem, sem auto-rotate vertical.
-            PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
-            PlayerSettings.allowedAutorotateToPortrait = false;
-            PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
-            PlayerSettings.allowedAutorotateToLandscapeLeft = true;
-            PlayerSettings.allowedAutorotateToLandscapeRight = true;
-
-            // APK (não AAB) e assinatura debug: instala direto no aparelho.
-            EditorUserBuildSettings.buildAppBundle = false;
-            PlayerSettings.Android.useCustomKeystore = false;
-
-            // Sempre 60 FPS; vSync desligado no mobile.
-            QualitySettings.vSyncCount = 0;
-
-            AssetDatabase.SaveAssets();
-        }
-
-        // ------------------------------------------------------------ Cenas
-
-        private static string[] CollectScenes()
-        {
-            var scenes = new List<string>();
-
-            if (AssetDatabase.IsValidFolder(ScenesFolder))
-            {
-                var guids = AssetDatabase.FindAssets("t:Scene", new[] { ScenesFolder });
-                for (var i = 0; i < guids.Length; i++)
-                {
-                    var path = AssetDatabase.GUIDToAssetPath(guids[i]);
-                    if (!path.EndsWith(".unity", StringComparison.OrdinalIgnoreCase)) continue;
-                    if (path.EndsWith("_BuildPlaceholder.unity", StringComparison.OrdinalIgnoreCase)) continue;
-                    scenes.Add(path);
-                }
-            }
-
-            scenes.Sort(SceneOrder);
-
-            if (scenes.Count > 0) return scenes.ToArray();
-
-            Debug.LogWarning(
-                "[AndroidBuilder] Nenhuma cena encontrada em " + ScenesFolder + ". " +
-                "Gerando cena de VALIDAÇÃO (BuildPlaceholder). " +
-                "Crie Boot.unity e Arena.unity para gerar o APK do jogo de verdade.");
-
-            scenes.Add(CreatePlaceholderScene());
-            return scenes.ToArray();
-        }
-
-        private static int SceneOrder(string a, string b)
-        {
-            var sa = ScenePriority(a);
-            var sb = ScenePriority(b);
-            if (sa != sb) return sa.CompareTo(sb);
-            return string.CompareOrdinal(a, b);
-        }
-
-        private static int ScenePriority(string path)
-        {
-            if (path.EndsWith("Boot.unity", StringComparison.OrdinalIgnoreCase)) return 0;
-            if (path.EndsWith("Arena.unity", StringComparison.OrdinalIgnoreCase)) return 1;
-            return 2;
-        }
-
-        private static string CreatePlaceholderScene()
-        {
-            if (!AssetDatabase.IsValidFolder(ScenesFolder))
-                Directory.CreateDirectory(ScenesFolder);
-
-            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-
-            // Fundo escuro para o texto IMGUI ficar legível.
-            var cameraGo = new GameObject("Main Camera");
-            var camera = cameraGo.AddComponent<Camera>();
-            camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.05f, 0.07f, 0.1f, 1f);
-            cameraGo.tag = "MainCamera";
-            cameraGo.transform.position = new Vector3(0f, 1f, -10f);
-
-            var placeholder = new GameObject("BuildPlaceholder");
-            placeholder.AddComponent<BR.Core.BuildPlaceholder>();
-
-            EditorSceneManager.SaveScene(scene, PlaceholderScenePath);
+            EnsureScenesFolder();
             AssetDatabase.Refresh();
 
-            return PlaceholderScenePath;
+            EnsureBootstrapScript("GameBootstrap", GameBootstrapScriptPath, typeof(GameBootstrap), BootScenePath);
+            EnsureBootstrapScript("ArenaBootstrap", ArenaBootstrapScriptPath, typeof(ArenaBootstrap), ArenaScenePath);
+
+            AssetDatabase.Refresh();
+            RegisterBuildScenes();
+            AssetDatabase.SaveAssets();
+            Debug.Log("[PlayableSceneGenerator] Cenas Boot.unity e Arena.unity prontas para build.");
         }
 
-        // ------------------------------------------------------------ Saída
-
-        private static string ResolveOutputPath()
+        private static void EnsureScenesFolder()
         {
-            var projectRoot = Directory.GetParent(Application.dataPath).FullName;
+            if (AssetDatabase.IsValidFolder(ScenesFolder)) return;
 
-            // GameCI pode passar um caminho customizado via -customBuildPath.
-            var custom = GetCommandLineArg("-customBuildPath")
-                         ?? GetCommandLineArg("-buildPath")
-                         ?? GetCommandLineArg("-outputPath");
+            var projectFolder = "Assets/_Project";
+            if (!AssetDatabase.IsValidFolder(projectFolder))
+                throw new DirectoryNotFoundException($"Pasta Unity nao encontrada: {projectFolder}");
 
-            var folder = string.IsNullOrEmpty(custom)
-                ? Path.Combine(projectRoot, BuildFolder)
-                : (custom.EndsWith(".apk", StringComparison.OrdinalIgnoreCase)
-                    ? Path.GetDirectoryName(custom)
-                    : custom);
-
-            if (string.IsNullOrEmpty(folder)) folder = Path.Combine(projectRoot, BuildFolder);
-            Directory.CreateDirectory(folder);
-
-            if (!string.IsNullOrEmpty(custom) && custom.EndsWith(".apk", StringComparison.OrdinalIgnoreCase))
-                return custom;
-
-            return Path.Combine(folder, ApkName);
+            AssetDatabase.CreateFolder(projectFolder, "Scenes");
         }
 
-        private static string GetCommandLineArg(string name)
+        private static void EnsureBootstrapScript(string objectName, string scriptPath, Type bootstrapType, string scenePath)
         {
-            var args = Environment.GetCommandLineArgs();
-            for (var i = 0; i < args.Length - 1; i++)
-                if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase))
-                    return args[i + 1];
+            if (!File.Exists(scriptPath))
+                throw new FileNotFoundException($"Script de bootstrap nao encontrado: {scriptPath}");
 
-            return null;
+            var sourceScript = AssetDatabase.LoadAssetAtPath<MonoScript>(scriptPath);
+            if (sourceScript == null || sourceScript.GetClass() != bootstrapType)
+                throw new InvalidOperationException($"Unity nao reconhece o script de bootstrap: {scriptPath}");
+
+            var scriptGuid = AssetDatabase.AssetPathToGUID(scriptPath);
+            if (string.IsNullOrEmpty(scriptGuid))
+                throw new InvalidOperationException($"Unity nao conseguiu gerar o GUID do script: {scriptPath}");
+
+            var scriptMetaPath = scriptPath + ".meta";
+            if (!File.Exists(scriptMetaPath))
+                throw new FileNotFoundException($"Unity nao gerou o arquivo meta do script: {scriptMetaPath}");
+
+            var scene = SceneManager.GetSceneByPath(scenePath);
+            var openedHere = !scene.IsValid() || !scene.isLoaded;
+            var createdScene = openedHere && !File.Exists(scenePath);
+            var previousActiveScene = SceneManager.GetActiveScene();
+
+            try
+            {
+                if (openedHere)
+                {
+                    scene = createdScene
+                        ? EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive)
+                        : EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
+                }
+
+                if (!SceneManager.SetActiveScene(scene))
+                    throw new InvalidOperationException($"Nao foi possivel ativar a cena Unity: {scenePath}");
+
+                var roots = scene.GetRootGameObjects();
+                var bootstrap = Array.Find(roots, root => root.name == objectName);
+                if (bootstrap == null)
+                    bootstrap = Array.Find(roots, root => root.name == "GameBootstrap" || root.name == "ArenaBootstrap");
+
+                if (bootstrap == null)
+                {
+                    bootstrap = new GameObject(objectName);
+                    SceneManager.MoveGameObjectToScene(bootstrap, scene);
+                }
+
+                bootstrap.name = objectName;
+                if (bootstrap.GetComponent(bootstrapType) == null)
+                    bootstrap.AddComponent(bootstrapType);
+
+                foreach (var root in scene.GetRootGameObjects())
+                {
+                    if (root != bootstrap && (root.name == "BuildPlaceholder" || root.name == "Main Camera"))
+                        UnityEngine.Object.DestroyImmediate(root);
+                }
+
+                if (!EditorSceneManager.SaveScene(scene, scenePath))
+                    throw new IOException($"Nao foi possivel salvar a cena Unity: {scenePath}");
+            }
+            finally
+            {
+                if (openedHere && !createdScene && scene.IsValid() && scene.isLoaded)
+                    EditorSceneManager.CloseScene(scene, true);
+
+                if (previousActiveScene.IsValid() && previousActiveScene.isLoaded)
+                    SceneManager.SetActiveScene(previousActiveScene);
+            }
+        }
+
+        private static void RegisterBuildScenes()
+        {
+            var bootGuid = AssetDatabase.AssetPathToGUID(BootScenePath);
+            var arenaGuid = AssetDatabase.AssetPathToGUID(ArenaScenePath);
+            if (string.IsNullOrEmpty(bootGuid) || string.IsNullOrEmpty(arenaGuid))
+                throw new FileNotFoundException("Unity nao conseguiu localizar as cenas Boot/Arena.");
+
+            var scenes = new System.Collections.Generic.List<EditorBuildSettingsScene>
+            {
+                new EditorBuildSettingsScene(BootScenePath, true),
+                new EditorBuildSettingsScene(ArenaScenePath, true)
+            };
+
+            EditorBuildSettings.scenes = scenes.ToArray();
         }
     }
 }
